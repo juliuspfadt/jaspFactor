@@ -203,10 +203,10 @@ confirmatoryFactorAnalysisInternal <- function(jaspResults, dataset, options, ..
 
   cfaResult <- list()
 
-  cfaResult[["spec"]] <- .cfaCalcSpecs(dataset, options)
+  cfaResult[["spec"]] <- jaspSem:::.cfaCalcSpecs(dataset, options)
   # Recalculate the model
 
-  modObj <- .optionsToCFAMod(options, dataset, cfaResult)
+  modObj <- jaspSem:::.optionsToCFAMod(options, dataset, cfaResult)
   mod <- modObj$model
   cfaResult[["model"]] <- mod
   cfaResult[["model_simple"]] <- modObj$simple_model
@@ -347,109 +347,6 @@ confirmatoryFactorAnalysisInternal <- function(jaspResults, dataset, options, ..
   list(value = val, warnings = myWarnings)
 }
 
-.cfaCalcSpecs <- function(dataset, options) {
-  spec <- list()
-  spec$variables <- unlist(lapply(options$factors, function(x) x$indicators))
-  spec$latents   <- vapply(options$factors,        function(x) x$name, "names")
-  if (length(options$secondOrder) > 0) {
-    spec$soIndics  <- .translateFactorNames(options$secondOrder[[1]]$indicators, options, back = TRUE)
-  }
-  if (options$seType == "bootstrap") {
-    spec$se <- "standard"
-    spec$bootstrap <- TRUE
-  } else {
-    if (options$seType == "robust") {
-      if (options[["dataType"]] == "varianceCovariance") {
-        .quitAnalysis(gettext("Robust standard errors are not available for variance-covariance matrix input."))
-      }
-      spec$se <- "robust.sem"
-    } else {
-      spec$se <- options$seType
-    }
-    spec$bootstrap <- FALSE
-  }
-  return(spec)
-}
-
-.optionsToCFAMod <- function(options, dataset, cfaResult, base64 = TRUE) {
-  gv <- options$group
-  if (!base64) .v <- identity
-
-  vars    <- options$factors
-  latents <- cfaResult[["spec"]]$latents
-  labels  <- list()
-  # add extra output here because the Htmt needs a model syntax without grouping labels
-  labels_simp <- list()
-
-  fo <- gettext("# Factors")
-  fo_simp <- gettext("# Factors")
-  for (i in 1:length(vars)) {
-    pre <- paste0("\n", latents[i], " =~ ")
-    len <- length(vars[[i]]$indicators)
-    labelledvars <- character(len)
-    labels[[i]] <- list()
-    labelledvars_simp <- character(len)
-    labels_simp[[i]] <- list()
-    for (j in 1:len) {
-      if (nchar(options$group) == 0 || options$invarianceTesting !="configural") {
-        labels[[i]][[j]]  <- paste0("lambda_", i, "_", j)
-        labelledvars[j] <- paste0("lambda_", i, "_", j, "*", vars[[i]]$indicators[j])
-      } else { # grouping variable present and configural invarianceTesting
-        # we need a vector with different labels per group for lavaan
-        n_levels <- length(unique(na.omit(dataset[[options$group]])))
-        tmp_labels <- paste0("lambda_", i, "_", j, "_", seq(n_levels))
-        labels[[i]][[j]] <- tmp_labels
-        labelledvars[j] <- paste0("c(", paste0(tmp_labels, collapse = ","), ")", "*", vars[[i]]$indicators[j])
-      }
-      # give the simple model always since that is needed for the HTMT
-      labels_simp[[i]][[j]]  <- paste0("lambda_", i, "_", j)
-      labelledvars_simp[j] <- paste0("lambda_", i, "_", j, "*", vars[[i]]$indicators[j])
-    }
-    fo <- paste0(fo, pre, paste0(labelledvars, collapse = " + "))
-    fo_simp <- paste0(fo_simp, pre, paste0(labelledvars_simp, collapse = " + "))
-  }
-
-
-  if (!is.null(cfaResult[["spec"]]$soIndics)) {
-    facs    <- cfaResult[["spec"]]$soIndics
-    lenvars <- length(vars)
-
-    so  <- "# Second-order factor"
-    pre <- "\nSecondOrder =~ "
-    len <- length(facs)
-    labelledfacs <- character(len)
-    labels[[lenvars + 1]] <- list()
-    for (j in 1:len) {
-      # the normal case, either no grouping or no configural invarianceTesting
-      if (nchar(options$group) == 0 || options$invarianceTesting !="configural") {
-        labels[[lenvars + 1]][[j]] <- paste0("gamma_1_", j)
-        labelledfacs[j] <- paste0("gamma_1_", j, "*", facs[j])
-      } else { # grouping variable present and configural invarianceTesting
-        # we need a vector with different labels per group for lavaan
-        tmp_labels <- paste0("gamma_1_", j, "_", seq(n_levels))
-        labels[[lenvars + 1]][[j]] <- tmp_labels
-        labelledfacs[j] <- paste0("c(", paste0(tmp_labels, collapse = ","), ")", "*", facs[j])
-      }
-
-    }
-
-    so <- paste0(so, pre, paste0(labelledfacs, collapse = " + "))
-  } else {
-    so <- NULL
-  }
-
-  if (length(options$residualsCovarying) > 0) {
-    rc <- "# Residual Correlations"
-    for (rcv in options$residualsCovarying) {
-      rc <- paste0(rc, "\n", rcv[1], " ~~ ", rcv[2])
-    }
-  } else {
-    rc <- NULL
-  }
-
-
-  return(list(model = paste0(c(fo, so, rc), collapse = "\n\n"), simple_model = fo_simp))
-}
 
 .CFAInvariance <- function(options) {
   if (options$invarianceTesting == "") return("")
@@ -1384,7 +1281,7 @@ confirmatoryFactorAnalysisInternal <- function(jaspResults, dataset, options, ..
 .cfaSyntax <- function(jaspResults, options, dataset, cfaResult) {
   if (is.null(cfaResult) || !options$lavaanSyntax || !is.null(jaspResults[["syntax"]])) return()
 
-  mod <- .optionsToCFAMod(options, dataset, cfaResult, FALSE)$model
+  mod <- jaspSem:::.optionsToCFAMod(options, dataset, cfaResult, FALSE)$model
 
   jaspResults[["syntax"]] <- createJaspHtml(mod, class = "jasp-code", position = 7, title = gettext("Model syntax"))
   jaspResults[["syntax"]]$dependOn(optionsFromObject = jaspResults[["maincontainer"]][["cfatab"]])
@@ -1529,76 +1426,6 @@ confirmatoryFactorAnalysisInternal <- function(jaspResults, dataset, options, ..
   jaspResults[["resRelTable"]] <- relTable
 
 }
-
-# delete once jaspSem is merged
-lavBootstrap <- function(fit, samples = 1000, standard = FALSE, typeStd = NULL) {
-  # Run bootstrap, track progress with progress bar
-  # Notes: faulty runs are simply ignored
-  # recommended: add a warning if not all boot samples are successful
-  # fit <- lavBootstrap(fit, samples = 1000)
-  # if (nrow(fit@boot$coef) < 1000)
-  #  tab$addFootnote(gettextf("Not all bootstrap samples were successful: CI based on %.0f samples.", nrow(fit@boot$coef)),
-  #                  "<em>Note.</em>")
-
-
-  coef_with_callback <- function(lav_object) {
-    # Progress bar is ticked every time coef() is evaluated, which happens once on the main object:
-    # https://github.com/yrosseel/lavaan/blob/77a568a574e4113245e2f6aff1d7c3120a26dd90/R/lav_bootstrap.R#L107
-    # and then every time on a successful bootstrap:
-    # https://github.com/yrosseel/lavaan/blob/77a568a574e4113245e2f6aff1d7c3120a26dd90/R/lav_bootstrap.R#L375
-    # i.e., samples + 1 times
-    progressbarTick()
-
-    return(lavaan::coef(lav_object))
-  }
-
-  coef_with_callback_std <- function(lav_object, typeStd) {
-    std <- lavaan::standardizedSolution(lav_object, type = typeStd)
-    out <- std$est.std
-
-    progressbarTick()
-
-    return(out)
-  }
-
-  startProgressbar(samples + 1)
-
-  if (!standard) {
-    bootres <- lavaan::bootstrapLavaan(object = fit, R = samples, FUN = coef_with_callback)
-  } else {
-    bootres <- lavaan::bootstrapLavaan(object = fit, R = samples, FUN = coef_with_callback_std, typeStd = typeStd)
-  }
-
-  # Add the bootstrap samples to the fit object
-  fit@boot       <- list(coef = bootres)
-  fit@Options$se <- "bootstrap"
-
-  # exclude error bootstrap runs
-  err_id <- attr(fit@boot$coef, "error.idx")
-  if (length(err_id) > 0L) {
-    fit@boot$coef <- fit@boot$coef[-err_id, , drop = FALSE]
-  }
-
-  # we actually need the SEs from the bootstrap not the SEs from ML or something
-  N <- nrow(fit@boot$coef)
-
-  # we multiply the var by (n-1)/n because lavaan actually uses n for the variance instead of n-1
-  if (!standard) {
-    # for unstandardized
-    fit@ParTable$se[fit@ParTable$free != 0] <- apply(fit@boot$coef, 2, sd) * sqrt((N-1)/N)
-  } else {
-    fit@ParTable$se <- apply(fit@boot$coef, 2, sd) * sqrt((N-1)/N)
-    # the standardized solution gives all estimates not only the unconstrained, so we need to change
-    # the free prameters in the partable and also change the estimate
-    fit@ParTable$free <- seq_len(ncol(fit@boot$coef))
-    std <- lavaan::standardizedSolution(fit, type = typeStd)
-    fit@ParTable$est <- std$est.std
-  }
-
-
-  return(fit)
-}
-
 
 .cfaAddScoresToData <- function(jaspResults, options, cfaResult, dataset) {
 
